@@ -141,7 +141,7 @@ tab_data, tab_cluster = st.tabs(["Data", "Clustering"])
 # ── Data Tab ─────────────────────────────────────────────────────────────
 
 with tab_data:
-    st.dataframe(df, use_container_width=True, height=360)
+    st.dataframe(df, width="stretch", height=360)
     cols = st.columns(len(features))
     for i, feat in enumerate(features):
         cols[i].metric(feat, f"{df[feat].mean():.1f}", delta=f"std {df[feat].std():.1f}")
@@ -169,7 +169,7 @@ with tab_cluster:
             title = f"Iteration {i + 1} / {len(steps)}"
             fig = build_frame(df, features[0], features[1], labels, centroids,
                               title, scaler.mean_, scaler.scale_)
-            chart_2d.plotly_chart(fig, use_container_width=True, key=f"a2d_{i}")
+            chart_2d.plotly_chart(fig, width="stretch", key=f"a2d_{i}")
             status_text.caption(f"Step {i + 1} of {len(steps)} — centroids converging...")
             time.sleep(delay)
 
@@ -182,7 +182,7 @@ with tab_cluster:
         final_centroids = model.cluster_centers_
         fig = build_frame(df, features[0], features[1], final_labels, final_centroids,
                           "Final Clusters", scaler.mean_, scaler.scale_)
-        chart_2d.plotly_chart(fig, use_container_width=True)
+        chart_2d.plotly_chart(fig, width="stretch")
         status_text.caption("Converged.")
 
     if st.button("Replay animation"):
@@ -215,14 +215,14 @@ with tab_cluster:
         ),
         paper_bgcolor="#0E1117",
     )
-    st.plotly_chart(fig_3d, use_container_width=True)
+    st.plotly_chart(fig_3d, width="stretch")
 
     # -- Summary + Download ------------------------------------------------
 
     st.subheader("Cluster Summary")
     summary = df_out.groupby("Cluster")[f].mean().round(1)
     summary["Count"] = df_out.groupby("Cluster")["Cluster"].count().values
-    st.dataframe(summary, use_container_width=True)
+    st.dataframe(summary, width="stretch")
 
     csv = df_out.to_csv(index=False)
     st.download_button("Download results", csv, "segmented_data.csv", "text/csv")
