@@ -12,6 +12,7 @@ st.set_page_config(page_title="K-Means Segmentation", page_icon="K", layout="cen
 
 DATASETS_DIR = Path(__file__).parent / "datasets"
 COLORS = px.colors.qualitative.Plotly
+PLOTLY_CFG = {"displayModeBar": False, "scrollZoom": False}
 
 
 @st.cache_data
@@ -64,6 +65,9 @@ def build_frame(df, x_col, y_col, labels, centroids, title, scaler_mean, scaler_
         margin=dict(l=0, r=0, t=36, b=0), height=420,
         title=title, xaxis_title=x_col, yaxis_title=y_col,
         legend=dict(orientation="h", y=-0.12),
+        dragmode="pan",
+        xaxis=dict(fixedrange=True),
+        yaxis=dict(fixedrange=True),
     )
     return fig
 
@@ -170,7 +174,7 @@ with tab_cluster:
             title = f"Iteration {i + 1} / {len(steps)}"
             fig = build_frame(df, features[0], features[1], labels, centroids,
                               title, scaler.mean_, scaler.scale_)
-            chart_2d.plotly_chart(fig, width="stretch", key=f"a2d_{i}")
+            chart_2d.plotly_chart(fig, width="stretch", key=f"a2d_{i}", config=PLOTLY_CFG)
             status_text.caption(f"Step {i + 1} of {len(steps)} — centroids converging...")
             time.sleep(delay)
 
@@ -183,7 +187,7 @@ with tab_cluster:
         final_centroids = model.cluster_centers_
         fig = build_frame(df, features[0], features[1], final_labels, final_centroids,
                           "Final Clusters", scaler.mean_, scaler.scale_)
-        chart_2d.plotly_chart(fig, width="stretch")
+        chart_2d.plotly_chart(fig, width="stretch", config=PLOTLY_CFG)
         status_text.caption("Converged.")
 
     if st.button("Replay animation"):
@@ -213,10 +217,11 @@ with tab_cluster:
             yaxis=dict(title=f[1], backgroundcolor="#0E1117", gridcolor="#1f2937"),
             zaxis=dict(title=f[2], backgroundcolor="#0E1117", gridcolor="#1f2937"),
             camera=dict(eye=dict(x=1.6, y=1.6, z=0.9)),
+            dragmode="turntable",
         ),
         paper_bgcolor="#0E1117",
     )
-    st.plotly_chart(fig_3d, width="stretch")
+    st.plotly_chart(fig_3d, width="stretch", config=PLOTLY_CFG)
 
     # -- Summary + Download ------------------------------------------------
 
