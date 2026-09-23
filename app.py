@@ -104,6 +104,7 @@ BUILTIN = {
 }
 
 if source == "Built-in dataset":
+    assert dataset_name is not None
     cfg = BUILTIN[dataset_name]
     file_path = DATASETS_DIR / cfg["file"]
     if not file_path.exists():
