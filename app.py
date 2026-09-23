@@ -97,7 +97,7 @@ delay = SPEED_MAP[speed]
 BUILTIN = {
     "Customer Spending": {
         "file": "customer_spending.csv",
-        "features": ["Age", "AnnualIncome", "SpendingScore"],
+        "features": ["Age", "Annual Income", "Spending Score"],
         "id_col": "CustomerID",
     },
     "Student Marks": {
@@ -160,7 +160,7 @@ with tab_cluster:
 
     # -- Animated 2D: slow-motion cluster formation ------------------------
 
-    st.subheader("2D Cluster Formation")
+    st.subheader("Cluster Formation")
     chart_2d = st.empty()
     status_text = st.empty()
 
@@ -200,7 +200,7 @@ with tab_cluster:
     df_out["Cluster"] = final_labels.astype(str)
     f = features
 
-    st.subheader("3D Cluster View")
+    st.subheader("3D View")
     fig_3d = px.scatter_3d(
         df_out, x=f[0], y=f[1], z=f[2],
         color="Cluster",
