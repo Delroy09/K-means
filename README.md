@@ -13,10 +13,10 @@ streamlit run app.py
 
 Two bundled CSVs in `datasets/`:
 
-| Dataset | Features | Rows |
-|---|---|---|
-| Customer Spending | Age, AnnualIncome, SpendingScore | 80 |
-| Student Marks | Math, Science, English | 60 |
+| Dataset           | Features                         | Rows |
+| ----------------- | -------------------------------- | ---- |
+| Customer Spending | Age, AnnualIncome, SpendingScore | 80   |
+| Student Marks     | Math, Science, English           | 60   |
 
 ## How It Works
 

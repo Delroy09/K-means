@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from pathlib import Path
@@ -10,8 +11,86 @@ import time
 st.set_page_config(page_title="K-Means Segmentation", page_icon="K", layout="centered")
 
 DATASETS_DIR = Path(__file__).parent / "datasets"
+COLORS = px.colors.qualitative.Plotly
 
-DATASETS = {
+
+@st.cache_data
+def load_csv(path: str) -> pd.DataFrame:
+    return pd.read_csv(path)
+
+
+def kmeans_steps(X_scaled, k, n_steps=12):
+    """Run K-Means one iteration at a time, yielding labels + centroids."""
+    rng = np.random.default_rng(42)
+    idx = rng.choice(len(X_scaled), size=k, replace=False)
+    centroids = X_scaled[idx].copy()
+
+    for _ in range(n_steps):
+        dists = np.linalg.norm(X_scaled[:, None] - centroids[None, :], axis=2)
+        labels = dists.argmin(axis=1)
+        new_centroids = np.array([
+            X_scaled[labels == c].mean(axis=0) if (labels == c).any() else centroids[c]
+            for c in range(k)
+        ])
+        centroids = new_centroids
+        yield labels, centroids.copy()
+
+
+def build_frame(df, x_col, y_col, labels, centroids, title, scaler_mean, scaler_scale):
+    """Build a Plotly figure showing points coloured by cluster + centroid markers."""
+    cx = centroids[:, 0] * scaler_scale[0] + scaler_mean[0]
+    cy = centroids[:, 1] * scaler_scale[1] + scaler_mean[1]
+
+    fig = go.Figure()
+    for c in range(centroids.shape[0]):
+        mask = labels == c
+        subset = df[mask]
+        fig.add_trace(go.Scatter(
+            x=subset[x_col], y=subset[y_col],
+            mode="markers",
+            marker=dict(size=7, color=COLORS[c % len(COLORS)], opacity=0.75,
+                        line=dict(width=0.4, color="#222")),
+            name=f"Cluster {c}",
+            showlegend=True,
+        ))
+    fig.add_trace(go.Scatter(
+        x=cx, y=cy, mode="markers",
+        marker=dict(size=16, color="white", symbol="x",
+                    line=dict(width=2, color="#333")),
+        name="Centroids",
+    ))
+    fig.update_layout(
+        template="plotly_dark",
+        margin=dict(l=0, r=0, t=36, b=0), height=420,
+        title=title, xaxis_title=x_col, yaxis_title=y_col,
+        legend=dict(orientation="h", y=-0.12),
+    )
+    return fig
+
+
+# ── Sidebar ──────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    st.header("Settings")
+
+    source = st.radio("Data source", ["Built-in dataset", "Upload CSV"], horizontal=True)
+
+    if source == "Built-in dataset":
+        dataset_name = st.selectbox("Dataset", ["Customer Spending", "Student Marks"])
+    else:
+        dataset_name = None
+
+    k = st.slider("Clusters (K)", 2, 6, 2)
+    speed = st.select_slider("Animation speed", ["Slow", "Normal", "Fast"], value="Normal")
+    st.divider()
+    st.caption("Streamlit / scikit-learn / Plotly")
+
+SPEED_MAP = {"Slow": 0.9, "Normal": 0.5, "Fast": 0.2}
+delay = SPEED_MAP[speed]
+
+# ── Load Data ────────────────────────────────────────────────────────────
+
+BUILTIN = {
     "Customer Spending": {
         "file": "customer_spending.csv",
         "features": ["Age", "AnnualIncome", "SpendingScore"],
@@ -24,44 +103,36 @@ DATASETS = {
     },
 }
 
-
-@st.cache_data
-def load_data(path: str) -> pd.DataFrame:
-    return pd.read_csv(path)
-
-
-def run_kmeans(df: pd.DataFrame, features: list[str], k: int):
-    X = df[features].values
-    scaled = StandardScaler().fit_transform(X)
-    model = KMeans(n_clusters=k, init="k-means++", n_init=10, random_state=42)
-    labels = model.fit_predict(scaled)
-    return labels, scaled
-
-
-# ── Sidebar ──────────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.header("Settings")
-    dataset_name = st.selectbox("Dataset", list(DATASETS.keys()))
-    k = st.slider("Clusters (K)", 2, 6, 2)
-    st.divider()
-    st.caption("Streamlit / scikit-learn / Plotly")
-
-cfg = DATASETS[dataset_name]
+if source == "Built-in dataset":
+    cfg = BUILTIN[dataset_name]
+    file_path = DATASETS_DIR / cfg["file"]
+    if not file_path.exists():
+        st.error(f"Dataset not found: `{file_path}`")
+        st.stop()
+    df = load_csv(str(file_path))
+    features = cfg["features"]
+    id_col = cfg["id_col"]
+else:
+    uploaded = st.file_uploader("Upload a CSV file", type=["csv"])
+    if uploaded is None:
+        st.info("Upload a CSV with at least 3 numeric columns to cluster on.")
+        st.stop()
+    df = pd.read_csv(uploaded)
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if len(numeric_cols) < 3:
+        st.error("Need at least 3 numeric columns. Found: " + ", ".join(numeric_cols))
+        st.stop()
+    st.subheader("Select columns")
+    id_col = st.selectbox("ID column (optional)", ["(none)"] + df.columns.tolist())
+    features = st.multiselect("Feature columns (pick 3)", numeric_cols, default=numeric_cols[:3])
+    if len(features) != 3:
+        st.warning("Select exactly 3 feature columns.")
+        st.stop()
 
 # ── Header ───────────────────────────────────────────────────────────────
 
 st.title("K-Means Segmentation")
 st.caption("Pick a dataset, cluster it, explore the results.")
-
-# ── Load Data ────────────────────────────────────────────────────────────
-
-file_path = DATASETS_DIR / cfg["file"]
-if not file_path.exists():
-    st.error(f"Dataset not found: `{file_path}`")
-    st.stop()
-
-df = load_data(str(file_path))
 
 # ── Tabs ─────────────────────────────────────────────────────────────────
 
@@ -71,92 +142,71 @@ tab_data, tab_cluster = st.tabs(["Data", "Clustering"])
 
 with tab_data:
     st.dataframe(df, use_container_width=True, height=360)
-    cols = st.columns(len(cfg["features"]))
-    for i, feat in enumerate(cfg["features"]):
+    cols = st.columns(len(features))
+    for i, feat in enumerate(features):
         cols[i].metric(feat, f"{df[feat].mean():.1f}", delta=f"std {df[feat].std():.1f}")
 
 # ── Clustering Tab ───────────────────────────────────────────────────────
 
 with tab_cluster:
-    labels, scaled = run_kmeans(df, cfg["features"], k)
-    df_out = df.copy()
-    df_out["Cluster"] = labels.astype(str)
-    f = cfg["features"]
+    X_raw = df[features].values
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_raw)
 
-    # -- Animated 2D scatter (iterative cluster assignment) ----------------
+    # -- Animated 2D: slow-motion cluster formation ------------------------
 
-    st.subheader("2D Cluster View")
-    pair_x, pair_y = f[0], f[1]
-    chart_placeholder = st.empty()
+    st.subheader("2D Cluster Formation")
+    chart_2d = st.empty()
+    status_text = st.empty()
 
-    if "animated" not in st.session_state:
-        st.session_state["animated"] = {}
+    anim_key = f"{source}_{dataset_name}_{k}_{speed}"
+    if "anim_done" not in st.session_state:
+        st.session_state["anim_done"] = {}
 
-    anim_key = f"{dataset_name}_{k}"
-    already_animated = st.session_state["animated"].get(anim_key, False)
+    if not st.session_state["anim_done"].get(anim_key, False):
+        steps = list(kmeans_steps(X_scaled, k, n_steps=12))
+        for i, (labels, centroids) in enumerate(steps):
+            title = f"Iteration {i + 1} / {len(steps)}"
+            fig = build_frame(df, features[0], features[1], labels, centroids,
+                              title, scaler.mean_, scaler.scale_)
+            chart_2d.plotly_chart(fig, use_container_width=True, key=f"a2d_{i}")
+            status_text.caption(f"Step {i + 1} of {len(steps)} — centroids converging...")
+            time.sleep(delay)
 
-    if not already_animated:
-        X_raw = df[f].values
-        X_scaled = StandardScaler().fit_transform(X_raw)
-        n_steps = min(k + 4, 8)
-
-        for step in range(1, n_steps + 1):
-            partial = KMeans(
-                n_clusters=k, init="k-means++", n_init=1,
-                max_iter=step, random_state=42,
-            )
-            step_labels = partial.fit_predict(X_scaled)
-            temp = df.copy()
-            temp["Cluster"] = step_labels.astype(str)
-
-            fig_2d = px.scatter(
-                temp, x=pair_x, y=pair_y,
-                color="Cluster",
-                color_discrete_sequence=px.colors.qualitative.Plotly,
-                template="plotly_dark",
-                opacity=0.8,
-            )
-            fig_2d.update_layout(
-                margin=dict(l=0, r=0, t=30, b=0), height=380,
-                title=f"Iteration {step}",
-                xaxis_title=pair_x, yaxis_title=pair_y,
-            )
-            fig_2d.update_traces(marker=dict(size=8, line=dict(width=0.5, color="#222")))
-            chart_placeholder.plotly_chart(fig_2d, use_container_width=True, key=f"anim_{step}")
-            time.sleep(0.45)
-
-        st.session_state["animated"][anim_key] = True
+        status_text.caption("Converged.")
+        st.session_state["anim_done"][anim_key] = True
+        final_labels, final_centroids = steps[-1]
     else:
-        fig_2d = px.scatter(
-            df_out, x=pair_x, y=pair_y,
-            color="Cluster",
-            color_discrete_sequence=px.colors.qualitative.Plotly,
-            template="plotly_dark",
-            opacity=0.8,
-        )
-        fig_2d.update_layout(
-            margin=dict(l=0, r=0, t=30, b=0), height=380,
-            title="Final Clusters",
-            xaxis_title=pair_x, yaxis_title=pair_y,
-        )
-        fig_2d.update_traces(marker=dict(size=8, line=dict(width=0.5, color="#222")))
-        chart_placeholder.plotly_chart(fig_2d, use_container_width=True)
+        model = KMeans(n_clusters=k, init="k-means++", n_init=10, random_state=42)
+        final_labels = model.fit_predict(X_scaled)
+        final_centroids = model.cluster_centers_
+        fig = build_frame(df, features[0], features[1], final_labels, final_centroids,
+                          "Final Clusters", scaler.mean_, scaler.scale_)
+        chart_2d.plotly_chart(fig, use_container_width=True)
+        status_text.caption("Converged.")
+
+    if st.button("Replay animation"):
+        st.session_state["anim_done"][anim_key] = False
+        st.rerun()
 
     # -- 3D scatter --------------------------------------------------------
+
+    df_out = df.copy()
+    df_out["Cluster"] = final_labels.astype(str)
+    f = features
 
     st.subheader("3D Cluster View")
     fig_3d = px.scatter_3d(
         df_out, x=f[0], y=f[1], z=f[2],
         color="Cluster",
-        color_discrete_sequence=px.colors.qualitative.Plotly,
+        color_discrete_sequence=COLORS,
         template="plotly_dark",
         opacity=0.85,
-        hover_data=[cfg["id_col"]],
+        hover_data=[id_col] if id_col != "(none)" else None,
     )
     fig_3d.update_traces(marker=dict(size=5, line=dict(width=0.3, color="#333")))
     fig_3d.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=550,
+        margin=dict(l=0, r=0, t=0, b=0), height=550,
         scene=dict(
             xaxis=dict(title=f[0], backgroundcolor="#0E1117", gridcolor="#1f2937"),
             yaxis=dict(title=f[1], backgroundcolor="#0E1117", gridcolor="#1f2937"),
